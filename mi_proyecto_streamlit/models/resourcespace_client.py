@@ -1,0 +1,147 @@
+import hashlib
+import requests
+
+# =============================================================================
+# 1. EL CONECTOR DE RED (Clase de Bajo Nivel)
+# =============================================================================
+class ResourceSpaceAPI:
+    """
+    Se encarga exclusivamente de la infraestructura de red: 
+    Autenticación, firmado de URLs y ejecución de peticiones HTTP.
+    """
+    def __init__(self, base_url: str, user: str, private_key: str):
+        self.base_url = base_url
+        self.user = user
+        self.private_key = private_key
+
+    def _sign_query(self, query_string: str) -> str:
+        """Genera la firma SHA256 obligatoria de la API."""
+        string_to_hash = f"{self.private_key}{query_string}"
+        return hashlib.sha256(string_to_hash.encode('utf-8')).hexdigest()
+
+    def call_function(self, function_name: str, **kwargs) -> list or dict:
+        """
+        Método genérico para ejecutar CUALQUIER función de ResourceSpace.
+        Recibe el nombre de la función y los parámetros que requiera.
+        """
+        # Construimos los parámetros base obligatorios
+        query_parts = [f"user={self.user}", f"function={function_name}"]
+        
+        # Añadimos dinámicamente los parámetros extra que nos pasen (param1, search, ref, etc.)
+        for key, value in kwargs.items():
+            query_parts.append(f"{key}={value}")
+        
+        # Unimos todo con ampersands (&) para formar la Query String
+        query_string = "&".join(query_parts)
+        
+        # Firmamos la consulta
+        signature = self._sign_query(query_string)
+        
+        # Construimos la URL definitiva
+        final_url = f"{self.base_url}?{query_string}&sign={signature}"
+        
+        try:
+            response = requests.get(final_url)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Error ResourceSpace API ({function_name}): {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"Error de conexión en API ({function_name}): {e}")
+            return None
+
+
+# =============================================================================
+# 2. EL REPOSITORIO DE NEGOCIO (Clase de Alto Nivel)
+# =============================================================================
+class ResourceSpaceRepository:
+    """
+    Usa el conector de red para ejecutar acciones específicas del negocio.
+    """
+    def __init__(self, api_connector: ResourceSpaceAPI):
+        self.api = api_connector
+
+    def get_all_video_ids(self) -> list:
+        """Obtiene la lista total de referencias de videos usando 'do_search'."""
+        data = self.api.call_function("do_search", search="", restypes="3,4")
+        if data is None:
+            return None
+        if isinstance(data, list):
+            return [resource['ref'] for resource in data if 'ref' in resource]
+        return []
+
+    def get_video_download_url(self, resource_id: int) -> str:
+        """
+        Pide el path del recurso. Probamos tres variantes de tamaño comunes 
+        en ResourceSpace para archivos de video originales.
+        """
+        # Variante 1: Intentar obtener el archivo máster original de video
+        data = self.api.call_function("get_resource_path", ref=resource_id, geturl=1, size="pre")
+        
+        # Si no devuelve un string válido, intentamos sin el parámetro size
+        if not isinstance(data, str) or "thm_" in data:
+            data = self.api.call_function("get_resource_path", ref=resource_id, geturl=1)
+            
+        return data if isinstance(data, str) else ""
+
+    def download_video(self, resource_id: int, dest_folder: str = "temp") -> str:
+        """
+        Descarga el archivo desde ResourceSpace. Si detecta que la URL entregada
+        apunta a una extensión de imagen (.jpg, .jpeg, .png), intenta forzar el formato de video (.mp4).
+        """
+        import os
+        import requests
+        
+        url = self.get_video_download_url(resource_id)
+        if not url:
+            print(f"No se obtuvo URL de descarga para el ID {resource_id}")
+            return None
+            
+        if not os.path.exists(dest_folder):
+            os.makedirs(dest_folder)
+            
+        # Detectamos la extensión real desde la URL
+        ext = "mp4"
+        if "ext=" in url:
+            try:
+                ext = url.split("ext=")[1].split("&")[0].lower()
+            except IndexError:
+                pass
+        
+        # 🚨 CORRECCIÓN CLAVE: Si la API te da un JPG de previsualización por defecto,
+        # nosotros sabemos que el recurso raíz original es un video, así que forzamos la extensión de video 
+        # y cambiamos el parámetro en la URL si es necesario.
+        if ext in ["jpg", "jpeg", "png"]:
+            print(f"⚠️ Alerta: La API devolvió una imagen ({ext}). Forzando petición de video original...")
+            if "ext=" in url:
+                url = url.replace(f"ext={ext}", "ext=mp4")
+            ext = "mp4"
+
+        local_path = os.path.join(dest_folder, f"resource_{resource_id}.{ext}")
+        
+        try:
+            response = requests.get(url, stream=True)
+            if response.status_code == 200:
+                with open(local_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024): # Chunks de 1MB
+                        if chunk:
+                            f.write(chunk)
+                return os.path.abspath(local_path)
+            else:
+                print(f"Error descargando ID {resource_id}: HTTP {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"Excepción descargando ID {resource_id}: {e}")
+            return None
+
+    def cleanup_video(self, local_path: str):
+        """
+        Elimina el archivo de video temporal del disco duro local.
+        """
+        import os
+        if local_path and os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except Exception as e:
+                print(f"Error al intentar eliminar el archivo {local_path}: {e}")

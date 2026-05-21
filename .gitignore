@@ -1,0 +1,7 @@
+.streamlit/secrets.toml
+.venv/
+__pycache__/
+temp/
+temp_test/
+temp_videos/
+test_pipeline.py
