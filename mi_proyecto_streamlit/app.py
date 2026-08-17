@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Importamos estilos y vistas de la arquitectura limpia
+# Importamos estilos y vistas (ligeros, solo Streamlit)
 from views.styles import apply_bytebox_styles
 from views.header import render_header
 from views.sidebar import render_sidebar
@@ -24,12 +24,25 @@ from views.main_page import render_main_page
 from views.selection_panel import render_selection_panel
 from views.collection_tray import render_collection_tray
 
-# Importamos las clases del Modelo
-from models.resourcespace_client import ResourceSpaceAPI, ResourceSpaceRepository
+# ─── MODELO ──────────────────────────────────────────────────────────────────
+# Los imports de modelos pesados (resourcespace_client, blip_processor) son
+# lazy: se realizan solo en el momento en que el usuario conecta o procesa,
+# no en el arranque de la aplicación.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_repository():
+    """Carga lazy de ResourceSpaceAPI y ResourceSpaceRepository + credenciales."""
+    from models.resourcespace_client import ResourceSpaceAPI, ResourceSpaceRepository
+    import streamlit as st
+    url = st.secrets["resourcespace"]["base_url"]
+    user = st.secrets["resourcespace"]["user"]
+    key = st.secrets["resourcespace"]["private_key"]
+    api = ResourceSpaceAPI(base_url=url, user=user, private_key=key)
+    return ResourceSpaceRepository(api)
 
 @st.cache_resource
 def load_analyzer():
-    """Carga y cachea el modelo BLIP optimizado para CPU."""
+    """Carga y cachea el modelo BLIP. Se ejecuta una sola vez por proceso."""
     from models.blip_processor import VideoAnalyzer
     return VideoAnalyzer()
 
@@ -75,21 +88,16 @@ def main():
         
         if conectar_presionado:
             try:
-                url_instancia = st.secrets["resourcespace"]["base_url"]
-                usuario = st.secrets["resourcespace"]["user"]
-                api_key = st.secrets["resourcespace"]["private_key"]
+                with st.spinner("🔄 Autenticando con la API de ByteBox..."):
+                    repository = _get_repository()
+                    lista_ids = repository.get_all_video_ids()
             except KeyError:
                 st.error("❌ No se encontraron las credenciales en el archivo `.streamlit/secrets.toml`")
                 return
-
-            with st.spinner("🔄 Autenticando con la API de ByteBox..."):
-                api_connector = ResourceSpaceAPI(
-                    base_url=url_instancia, 
-                    user=usuario, 
-                    private_key=api_key
-                )
-                repository = ResourceSpaceRepository(api_connector)
-                lista_ids = repository.get_all_video_ids()
+            except Exception as e:
+                st.session_state["conectado"] = False
+                st.error(f"❌ Error de conexión: {e}")
+                return
 
             if lista_ids is not None:
                 st.session_state["conectado"] = True
@@ -117,12 +125,8 @@ def main():
             </div>
             """, unsafe_allow_html=True)
             
-            # Reinstanciar repositorio
-            url_instancia = st.secrets["resourcespace"]["base_url"]
-            usuario = st.secrets["resourcespace"]["user"]
-            api_key = st.secrets["resourcespace"]["private_key"]
-            api_connector = ResourceSpaceAPI(base_url=url_instancia, user=usuario, private_key=api_key)
-            repository = ResourceSpaceRepository(api_connector)
+            # Instanciar repositorio con lazy import
+            repository = _get_repository()
 
             # Cargar analizador BLIP
             with st.spinner("Cargando modelo de IA (BLIP-base) en CPU con optimización de memoria..."):

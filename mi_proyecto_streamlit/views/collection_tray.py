@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image
+# PIL se importa de forma lazy dentro de la función únicamente cuando hay frames que mostrar
 
 def render_collection_tray(analyzed_frames: list, active_video_id: str = None):
     """
