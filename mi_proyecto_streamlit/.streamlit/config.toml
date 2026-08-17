@@ -1,0 +1,26 @@
+[theme]
+# Azul corporativo ResourceSpace para botones y elementos activos
+primaryColor = "#1b75bb"
+
+# Fondo general del área principal de trabajo
+backgroundColor = "#f8f9fa"
+
+# Fondo de la barra lateral oscura característica de ResourceSpace
+secondaryBackgroundColor = "#33373b"
+
+# Color del texto principal
+textColor = "#212529"
+
+# Tipografía limpia y profesional
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = false
+port = 8501
+address = "localhost"
+enableCORS = false
+enableXsrfProtection = false
+fileWatcherType = "none"

@@ -83,10 +83,21 @@ class VideoAnalyzer:
                 else:
                     timestamp = f"{m:02d}:{s:02d}"
                     
-                yield timestamp, caption
+                # Miniatura ligera para la interfaz (ResourceSpace Collection Tray)
+                thumb = pil_img.resize((180, 105))
+                yield timestamp, caption, thumb
                 
             # Avanzar al siguiente frame
             success, frame = cap.read()
             frame_count += 1
             
         cap.release()
+
+    def process_video(self, video_path: str, sample_rate_sec: int = 5, generation_kwargs: dict = None) -> list:
+        """
+        Versión no-generador para scripts y tests que devuelve una lista de tuplas (timestamp, caption).
+        """
+        results = []
+        for timestamp, caption, _ in self.process_video_stream(video_path, sample_rate_sec, generation_kwargs):
+            results.append(f"[{timestamp}] {caption}")
+        return results

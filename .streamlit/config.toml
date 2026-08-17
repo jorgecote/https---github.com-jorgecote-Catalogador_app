@@ -1,15 +1,26 @@
 [theme]
-# El azul corporativo de ResourceSpace para botones primarios, enlaces y elementos activos
-primaryColor = "#2c5984"
+# Azul corporativo ResourceSpace para botones y elementos activos
+primaryColor = "#1b75bb"
 
-# El fondo general de las páginas (un blanco/gris ultra claro muy limpio)
-backgroundColor = "#fcfcfc"
+# Fondo general del área principal de trabajo
+backgroundColor = "#f8f9fa"
 
-# El fondo de las barras laterales, expanders y tarjetas de Streamlit (gris claro sutil)
-secondaryBackgroundColor = "#f4f6f8"
+# Fondo de la barra lateral oscura característica de ResourceSpace
+secondaryBackgroundColor = "#33373b"
 
-# Texto principal en un tono gris oscuro casi negro para máxima legibilidad
-textColor = "#222222"
+# Color del texto principal
+textColor = "#212529"
 
-# Tipografía limpia y corporativa
+# Tipografía limpia y profesional
 font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = false
+port = 8501
+address = "localhost"
+enableCORS = false
+enableXsrfProtection = false
+fileWatcherType = "none"

@@ -1,82 +1,74 @@
 import streamlit as st
 
-def render_selection_panel(video_ids: list):
+def render_selection_panel(video_ids: list, search_filter: str = ""):
     """
-    Renderiza el panel donde el usuario selecciona qué videos procesar
-    y configura los parámetros del modelo.
+    Renderiza el panel de selección de recursos al estilo ByteBox,
+    permitiendo filtrar y elegir los videos a procesar.
     """
-    st.markdown("---")
-    st.markdown("## ⚙️ Configuración de Procesamiento")
-    
     if not video_ids:
-        st.info("No se encontraron videos disponibles para procesar.")
-        return [], 0, False
-        
-    col1, col2 = st.columns([2, 1], gap="large")
+        st.info("No se encontraron recursos de video disponibles en el servidor de ByteBox.")
+        return [], False
+
+    # Filtrar IDs si hay texto de búsqueda
+    filtered_ids = video_ids
+    if search_filter:
+        filtered_ids = [vid for vid in video_ids if search_filter.lower() in str(vid).lower()]
+
+    st.markdown("""
+    <div class="rs-card">
+        <div class="rs-card-header">
+            <span>🎞️</span> Recursos de Video para Catalogación
+        </div>
+        <div class="rs-card-subtitle">
+            Seleccione los videos de ByteBox que desea analizar fotograma a fotograma con el modelo de IA.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Barra superior de controles de selección
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
     
-    with col1:
-        st.markdown("### 🎞️ Selecciona los Videos")
-        st.markdown("Elige qué recursos deseas enviar al modelo de IA para generar descriptores.")
+    with ctrl_col1:
+        select_all = st.checkbox("☑ Seleccionar todos los videos visibles", value=False, key="select_all_vids")
         
-        # Checkbox "Seleccionar Todos"
-        select_all = st.checkbox("Seleccionar todos los videos", value=False)
+    with ctrl_col2:
+        st.caption(f"Mostrando **{len(filtered_ids)}** de **{len(video_ids)}** videos")
         
-        selected_ids = []
-        # Crear un contenedor con scroll si hay muchos videos
-        with st.container(height=300):
-            for vid in video_ids:
-                # Si 'select_all' es True, los checkboxes se marcan automáticamente
-                is_selected = st.checkbox(f"🎬 Video ID: {vid}", value=select_all, key=f"chk_{vid}")
+    selected_ids = []
+    
+    # Contenedor con scroll para selección de videos con aspecto de tarjetas DAM
+    with st.container(height=260):
+        # Disponer en 2 columnas para una vista limpia
+        cols = st.columns(2)
+        for idx, vid in enumerate(filtered_ids):
+            col = cols[idx % 2]
+            with col:
+                is_selected = st.checkbox(
+                    f"🎥 Recurso ID: **{vid}**", 
+                    value=select_all, 
+                    key=f"chk_vid_{vid}"
+                )
                 if is_selected:
                     selected_ids.append(vid)
-                    
-    with col2:
-        st.markdown("### ⏱️ Tasa de Muestreo")
-        st.markdown("Indica cada cuántos segundos se extraerá un fotograma para analizar.")
-        
-        # Input numérico para la tasa de muestreo
-        sample_rate = st.number_input(
-            "Segundos por fotograma", 
-            min_value=1, 
-            max_value=60, 
-            value=5,
-            step=1,
-            help="Un valor más bajo genera más fotogramas (mayor precisión, pero más lento)."
+
+    # Panel de Acción Inferior
+    action_col1, action_col2 = st.columns([2, 1], gap="medium")
+    
+    with action_col1:
+        st.markdown(f"""
+        <div style="background-color: #f1f5f9; padding: 10px 15px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.88rem;">
+            <strong>Selección actual:</strong> <span style="color: #1b75bb; font-weight: 700;">{len(selected_ids)}</span> video(s) seleccionado(s) para procesamiento.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with action_col2:
+        # El botón de catalogación se deshabilita si no hay videos seleccionados
+        boton_deshabilitado = (len(selected_ids) == 0)
+        procesar = st.button(
+            "🚀 Iniciar Catalogación AI", 
+            type="primary", 
+            use_container_width=True, 
+            disabled=boton_deshabilitado
         )
-        
-        # --- NUEVO: Configuración Avanzada BLIP ---
-        generation_config = {"num_beams": 1, "do_sample": False}
-        with st.expander("🧠 Configuración Avanzada de IA"):
-            st.markdown("<small>Opciones para el generador de texto BLIP</small>", unsafe_allow_html=True)
-            strategy = st.selectbox(
-                "Estrategia de Inferencia", 
-                [
-                    "Greedy Search (Rápida, Única)", 
-                    "Beam Search (Por Ramas, Precisa)", 
-                    "Sampling (Creativa, Aleatoria)"
-                ]
-            )
-            
-            if "Beam Search" in strategy:
-                num_beams = st.slider("Número de Ramas (num_beams)", min_value=2, max_value=10, value=3, step=1, help="Más ramas mejoran la calidad pero reducen la velocidad.")
-                generation_config = {"num_beams": num_beams, "do_sample": False}
-            elif "Sampling" in strategy:
-                temperature = st.slider("Temperatura", min_value=0.1, max_value=2.0, value=1.0, step=0.1, help="Valores altos generan más creatividad, pero pueden ser incoherentes.")
-                top_p = st.slider("Top-P", min_value=0.1, max_value=1.0, value=0.9, step=0.1)
-                generation_config = {"do_sample": True, "temperature": temperature, "top_p": top_p, "num_beams": 1}
-            else:
-                # Greedy por defecto
-                generation_config = {"num_beams": 1, "do_sample": False}
-        # ------------------------------------------
-        
-        st.markdown("---")
-        st.metric(label="Videos Seleccionados", value=len(selected_ids))
-        
-        procesar = st.button("🚀 Iniciar Procesamiento", use_container_width=True, type="primary")
-        
-    if procesar:
-        if len(selected_ids) == 0:
-            st.warning("⚠️ Debes seleccionar al menos un video para continuar.")
-            return [], sample_rate, generation_config, False
-            
-    return selected_ids, sample_rate, generation_config, procesar
+
+    return selected_ids, procesar
