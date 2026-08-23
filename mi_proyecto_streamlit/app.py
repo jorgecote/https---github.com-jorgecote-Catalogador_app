@@ -1,5 +1,13 @@
 import os
 import sys
+
+# Configurar codificación UTF-8 para evitar errores de codificación en consolas de Windows
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
+
 from pathlib import Path
 import streamlit as st
 
@@ -63,6 +71,10 @@ def main():
         st.session_state["analyzed_frames"] = []
     if "active_video_id" not in st.session_state:
         st.session_state["active_video_id"] = None
+    if "collections" not in st.session_state:
+        st.session_state["collections"] = []
+    if "selected_collection_id" not in st.session_state:
+        st.session_state["selected_collection_id"] = None
 
     # Obtenemos la URL de la instancia de ResourceSpace de forma segura
     base_url = ""
@@ -74,7 +86,9 @@ def main():
     # 1. RENDERIZAR BARRA LATERAL (Panel de Configuración ResourceSpace)
     sidebar_params = render_sidebar(
         is_connected=st.session_state["conectado"],
-        total_videos=len(st.session_state["video_ids"])
+        total_videos=len(st.session_state["video_ids"]),
+        collections=st.session_state["collections"],
+        selected_collection_id=st.session_state["selected_collection_id"]
     )
 
     # 2. RENDERIZAR ENCABEZADO SUPERIOR (Logo y Migas de Pan)
@@ -91,6 +105,7 @@ def main():
                 with st.spinner("🔄 Autenticando con la API de ByteBox..."):
                     repository = _get_repository()
                     lista_ids = repository.get_all_video_ids()
+                    collections = repository.get_user_collections()
             except KeyError:
                 st.error("❌ No se encontraron las credenciales en el archivo `.streamlit/secrets.toml`")
                 return
@@ -102,6 +117,8 @@ def main():
             if lista_ids is not None:
                 st.session_state["conectado"] = True
                 st.session_state["video_ids"] = lista_ids
+                st.session_state["collections"] = collections
+                st.session_state["selected_collection_id"] = None
                 st.rerun()
             else:
                 st.session_state["conectado"] = False
@@ -109,9 +126,43 @@ def main():
 
     # 4. VISTA CUANDO ESTÁ CONECTADO
     else:
+        # Detectar si cambió la colección seleccionada en la barra lateral
+        new_col_id = sidebar_params.get("selected_collection_id", None)
+        if new_col_id != st.session_state.get("selected_collection_id", None):
+            try:
+                repository = _get_repository()
+                with st.spinner("🔄 Cargando material de la colección seleccionada..."):
+                    if new_col_id is None:
+                        lista_ids = repository.get_all_video_ids()
+                    else:
+                        lista_ids = repository.get_collection_video_ids(new_col_id)
+                # Limpiar checkboxes anteriores del estado de sesión para evitar conflictos
+                for vid in st.session_state.get("video_ids", []):
+                    key = f"chk_vid_{vid}"
+                    if key in st.session_state:
+                        del st.session_state[key]
+                if "select_all_vids" in st.session_state:
+                    st.session_state["select_all_vids"] = False
+
+                st.session_state["selected_collection_id"] = new_col_id
+                st.session_state["video_ids"] = lista_ids
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error al cargar colección: {e}")
+
+        # Obtener el nombre de la colección activa para mostrarlo en el panel
+        collection_name = None
+        if st.session_state.get("selected_collection_id") is not None:
+            active_id = st.session_state["selected_collection_id"]
+            for col in st.session_state.get("collections", []):
+                if col["ref"] == active_id:
+                    collection_name = col["name"]
+                    break
+
         selected_ids, procesar = render_selection_panel(
             video_ids=st.session_state["video_ids"],
-            search_filter=sidebar_params["search_filter"]
+            search_filter=sidebar_params["search_filter"],
+            collection_name=collection_name
         )
 
         # 5. LÓGICA DE PROCESAMIENTO Y CATALOGACIÓN

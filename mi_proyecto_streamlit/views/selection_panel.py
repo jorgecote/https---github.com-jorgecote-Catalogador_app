@@ -1,12 +1,20 @@
 import streamlit as st
 
-def render_selection_panel(video_ids: list, search_filter: str = ""):
+def _toggle_select_all():
+    """Callback que se ejecuta al cambiar el checkbox 'Seleccionar todos'.
+    Lee los IDs de video directamente del session_state para evitar datos obsoletos."""
+    val = st.session_state.get("select_all_vids", False)
+    for vid in st.session_state.get("_current_filtered_ids", []):
+        st.session_state[f"chk_vid_{vid}"] = val
+
+def render_selection_panel(video_ids: list, search_filter: str = "", collection_name: str = None):
     """
     Renderiza el panel de selección de recursos al estilo ByteBox,
     permitiendo filtrar y elegir los videos a procesar.
     """
     if not video_ids:
-        st.info("No se encontraron recursos de video disponibles en el servidor de ByteBox.")
+        coll_msg = f" en la colección '{collection_name}'" if collection_name else " en el servidor de ByteBox"
+        st.info(f"No se encontraron recursos de video disponibles{coll_msg}.")
         return [], False
 
     # Filtrar IDs si hay texto de búsqueda
@@ -14,10 +22,14 @@ def render_selection_panel(video_ids: list, search_filter: str = ""):
     if search_filter:
         filtered_ids = [vid for vid in video_ids if search_filter.lower() in str(vid).lower()]
 
-    st.markdown("""
+    # Guardar los IDs filtrados en session_state para que el callback los pueda leer
+    st.session_state["_current_filtered_ids"] = filtered_ids
+
+    header_suffix = f" (Colección: {collection_name})" if collection_name else ""
+    st.markdown(f"""
     <div class="rs-card">
         <div class="rs-card-header">
-            <span>🎞️</span> Recursos de Video para Catalogación
+            <span>🎞️</span> Recursos de Video para Catalogación{header_suffix}
         </div>
         <div class="rs-card-subtitle">
             Seleccione los videos de ByteBox que desea analizar fotograma a fotograma con el modelo de IA.
@@ -29,7 +41,11 @@ def render_selection_panel(video_ids: list, search_filter: str = ""):
     ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
     
     with ctrl_col1:
-        select_all = st.checkbox("☑ Seleccionar todos los videos visibles", value=False, key="select_all_vids")
+        st.checkbox(
+            "☑ Seleccionar todos los videos visibles", 
+            key="select_all_vids",
+            on_change=_toggle_select_all
+        )
         
     with ctrl_col2:
         st.caption(f"Mostrando **{len(filtered_ids)}** de **{len(video_ids)}** videos")
@@ -45,7 +61,6 @@ def render_selection_panel(video_ids: list, search_filter: str = ""):
             with col:
                 is_selected = st.checkbox(
                     f"🎥 Recurso ID: **{vid}**", 
-                    value=select_all, 
                     key=f"chk_vid_{vid}"
                 )
                 if is_selected:

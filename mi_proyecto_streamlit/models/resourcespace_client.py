@@ -71,6 +71,53 @@ class ResourceSpaceRepository:
             return [resource['ref'] for resource in data if 'ref' in resource]
         return []
 
+    def get_user_collections(self) -> list:
+        """Obtiene tanto las colecciones privadas del usuario como las públicas y destacadas (temas)."""
+        collections = []
+        seen_refs = set()
+        
+        # 1. Colecciones privadas del usuario
+        data_user = self.api.call_function("get_user_collections")
+        if isinstance(data_user, list):
+            for col in data_user:
+                if isinstance(col, dict) and 'ref' in col:
+                    ref = int(col['ref'])
+                    if ref not in seen_refs:
+                        seen_refs.add(ref)
+                        collections.append({
+                            "ref": ref,
+                            "name": col.get('name', f"Colección {col['ref']}"),
+                            "count": int(col.get('count', 0))
+                        })
+                        
+        # 2. Colecciones públicas y destacadas (temas)
+        data_public = self.api.call_function("search_public_collections", search="", exclude_themes=0)
+        if isinstance(data_public, list):
+            for col in data_public:
+                if isinstance(col, dict) and 'ref' in col:
+                    ref = int(col['ref'])
+                    if ref not in seen_refs:
+                        seen_refs.add(ref)
+                        collections.append({
+                            "ref": ref,
+                            "name": col.get('name', f"Colección {col['ref']}"),
+                            "count": None  # No disponible directamente sin realizar búsquedas extras
+                        })
+                        
+        # Ordenamos las colecciones alfabéticamente por su nombre
+        collections.sort(key=lambda x: x["name"].lower())
+        return collections
+
+    def get_collection_video_ids(self, collection_id: int) -> list:
+        """Obtiene los IDs de video que pertenecen a una colección."""
+        # Se usa do_search con la sintaxis especial !collection<id> de ResourceSpace
+        data = self.api.call_function("do_search", search=f"!collection{collection_id}", restypes="3,4")
+        if data is None:
+            return []
+        if isinstance(data, list):
+            return [resource['ref'] for resource in data if 'ref' in resource]
+        return []
+
     def get_video_download_url(self, resource_id: int) -> str:
         """
         Pide el path del recurso. Probamos tres variantes de tamaño comunes 
@@ -109,11 +156,11 @@ class ResourceSpaceRepository:
             except IndexError:
                 pass
         
-        # 🚨 CORRECCIÓN CLAVE: Si la API te da un JPG de previsualización por defecto,
+        # CORRECCIÓN CLAVE: Si la API te da un JPG de previsualización por defecto,
         # nosotros sabemos que el recurso raíz original es un video, así que forzamos la extensión de video 
         # y cambiamos el parámetro en la URL si es necesario.
         if ext in ["jpg", "jpeg", "png"]:
-            print(f"⚠️ Alerta: La API devolvió una imagen ({ext}). Forzando petición de video original...")
+            print(f"Alerta: La API devolvio una imagen ({ext}). Forzando peticion de video original...")
             if "ext=" in url:
                 url = url.replace(f"ext={ext}", "ext=mp4")
             ext = "mp4"
@@ -132,7 +179,7 @@ class ResourceSpaceRepository:
                 print(f"Error descargando ID {resource_id}: HTTP {response.status_code}")
                 return None
         except Exception as e:
-            print(f"Excepción descargando ID {resource_id}: {e}")
+            print(f"Excepcion descargando ID {resource_id}: {e}")
             return None
 
     def cleanup_video(self, local_path: str):

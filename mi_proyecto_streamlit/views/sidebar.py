@@ -1,15 +1,42 @@
 import streamlit as st
 
-def render_sidebar(is_connected: bool, total_videos: int = 0):
+def render_sidebar(is_connected: bool, total_videos: int = 0, collections: list = None, selected_collection_id: int = None):
     """
     Renderiza el panel lateral oscuro de ByteBox con controles
     de configuración de IA BLIP y filtros.
     """
     with st.sidebar:
-        # 1. Estado de Conexión
+        # 1. Estado de Conexión y Colecciones
         st.markdown('<div class="rs-sidebar-section-title">CONEXIÓN BYTEBOX</div>', unsafe_allow_html=True)
+        chosen_collection_id = None
         if is_connected:
             st.success(f"● Conectado ({total_videos} videos disponibles)")
+            
+            if collections:
+                options = [{"ref": None, "label": "📁 Todas las colecciones / General"}]
+                for col in collections:
+                    count_suffix = f" ({col['count']} ítems)" if col.get('count') is not None else ""
+                    options.append({
+                        "ref": col["ref"],
+                        "label": f"📁 [{col['ref']}] {col['name']}{count_suffix}"
+                    })
+                
+                # Buscamos el índice de la colección seleccionada actualmente
+                default_idx = 0
+                if selected_collection_id is not None:
+                    for idx, opt in enumerate(options):
+                        if opt["ref"] == selected_collection_id:
+                            default_idx = idx
+                            break
+                
+                selected_opt = st.selectbox(
+                    "Colección activa",
+                    options=options,
+                    index=default_idx,
+                    format_func=lambda x: x["label"],
+                    key="rs_active_collection"
+                )
+                chosen_collection_id = selected_opt["ref"]
         else:
             st.warning("○ Sin conexión activa")
 
@@ -66,5 +93,6 @@ def render_sidebar(is_connected: bool, total_videos: int = 0):
         return {
             "sample_rate": sample_rate,
             "generation_config": generation_config,
-            "search_filter": search_filter
+            "search_filter": search_filter,
+            "selected_collection_id": chosen_collection_id
         }
