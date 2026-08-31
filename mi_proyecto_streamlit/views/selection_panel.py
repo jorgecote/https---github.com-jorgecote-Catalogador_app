@@ -15,7 +15,7 @@ def render_selection_panel(video_ids: list, search_filter: str = "", collection_
     if not video_ids:
         coll_msg = f" en la colección '{collection_name}'" if collection_name else " en el servidor de ByteBox"
         st.info(f"No se encontraron recursos de video disponibles{coll_msg}.")
-        return [], False
+        return [], False, False
 
     # Filtrar IDs si hay texto de búsqueda
     filtered_ids = video_ids
@@ -67,7 +67,7 @@ def render_selection_panel(video_ids: list, search_filter: str = "", collection_
                     selected_ids.append(vid)
 
     # Panel de Acción Inferior
-    action_col1, action_col2 = st.columns([2, 1], gap="medium")
+    action_col1, action_col2, action_col3 = st.columns([2, 1, 1], gap="medium")
     
     with action_col1:
         st.markdown(f"""
@@ -86,4 +86,10 @@ def render_selection_panel(video_ids: list, search_filter: str = "", collection_
             disabled=boton_deshabilitado
         )
 
-    return selected_ids, procesar
+    with action_col3:
+        ir_a_clip = st.button(
+            "🔍 Búsqueda semántica (CLIP)",
+            use_container_width=True
+        )
+
+    return selected_ids, procesar, ir_a_clip

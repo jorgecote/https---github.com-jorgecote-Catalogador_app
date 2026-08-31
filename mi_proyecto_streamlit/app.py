@@ -31,22 +31,13 @@ from views.sidebar import render_sidebar
 from views.main_page import render_main_page
 from views.selection_panel import render_selection_panel
 from views.collection_tray import render_collection_tray
+from runtime.repository import get_repository
 
 # ─── MODELO ──────────────────────────────────────────────────────────────────
 # Los imports de modelos pesados (resourcespace_client, blip_processor) son
 # lazy: se realizan solo en el momento en que el usuario conecta o procesa,
 # no en el arranque de la aplicación.
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _get_repository():
-    """Carga lazy de ResourceSpaceAPI y ResourceSpaceRepository + credenciales."""
-    from models.resourcespace_client import ResourceSpaceAPI, ResourceSpaceRepository
-    import streamlit as st
-    url = st.secrets["resourcespace"]["base_url"]
-    user = st.secrets["resourcespace"]["user"]
-    key = st.secrets["resourcespace"]["private_key"]
-    api = ResourceSpaceAPI(base_url=url, user=user, private_key=key)
-    return ResourceSpaceRepository(api)
 
 @st.cache_resource
 def load_analyzer():
@@ -103,7 +94,7 @@ def main():
         if conectar_presionado:
             try:
                 with st.spinner("🔄 Autenticando con la API de ByteBox..."):
-                    repository = _get_repository()
+                    repository = get_repository()
                     lista_ids = repository.get_all_video_ids()
                     collections = repository.get_user_collections()
             except KeyError:
@@ -130,7 +121,7 @@ def main():
         new_col_id = sidebar_params.get("selected_collection_id", None)
         if new_col_id != st.session_state.get("selected_collection_id", None):
             try:
-                repository = _get_repository()
+                repository = get_repository()
                 with st.spinner("🔄 Cargando material de la colección seleccionada..."):
                     if new_col_id is None:
                         lista_ids = repository.get_all_video_ids()
@@ -159,11 +150,17 @@ def main():
                     collection_name = col["name"]
                     break
 
-        selected_ids, procesar = render_selection_panel(
+        selected_ids, procesar, ir_a_clip = render_selection_panel(
             video_ids=st.session_state["video_ids"],
             search_filter=sidebar_params["search_filter"],
             collection_name=collection_name
         )
+
+        if ir_a_clip:
+            if st.session_state["conectado"]:
+                st.switch_page("pages/1_Busqueda_CLIP.py")
+            else:
+                st.error("❌ Conéctese a ByteBox antes de abrir la búsqueda semántica.")
 
         # 5. LÓGICA DE PROCESAMIENTO Y CATALOGACIÓN
         if procesar and len(selected_ids) > 0:
@@ -177,7 +174,7 @@ def main():
             """, unsafe_allow_html=True)
             
             # Instanciar repositorio con lazy import
-            repository = _get_repository()
+            repository = get_repository()
 
             # Cargar analizador BLIP
             with st.spinner("Cargando modelo de IA (BLIP-base) en CPU con optimización de memoria..."):

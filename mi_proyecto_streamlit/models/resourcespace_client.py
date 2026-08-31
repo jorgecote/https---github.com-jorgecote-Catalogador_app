@@ -41,7 +41,7 @@ class ResourceSpaceAPI:
         final_url = f"{self.base_url}?{query_string}&sign={signature}"
         
         try:
-            response = requests.get(final_url)
+            response = requests.get(final_url, timeout=30)
             if response.status_code == 200:
                 return response.json()
             else:
@@ -168,7 +168,7 @@ class ResourceSpaceRepository:
         local_path = os.path.join(dest_folder, f"resource_{resource_id}.{ext}")
         
         try:
-            response = requests.get(url, stream=True)
+            response = requests.get(url, stream=True, timeout=(30, 120))
             if response.status_code == 200:
                 with open(local_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=1024 * 1024): # Chunks de 1MB

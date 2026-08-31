@@ -23,19 +23,42 @@ class VideoAnalyzer:
         # Lazy import: torch y transformers se cargan SOLO al instanciar el analizador
         import torch
         from transformers import BlipProcessor, BlipForConditionalGeneration
+        from models.model_paths import BLIP_LOCAL_DIR, has_blip_weights
 
         # Forzar CPU explícitamente
         self.device = "cpu"
         self._torch = torch  # Guardar referencia para reutilizarla en generate_caption
 
-        # Cargar el procesador (tokenizador + feature extractor)
-        self.processor = BlipProcessor.from_pretrained(model_name)
+        # Priorizar pesos locales. Esto evita peticiones a Hugging Face cuando
+        # la red institucional bloquea la validación de certificados SSL.
+        local_ready = has_blip_weights()
+        load_path = str(BLIP_LOCAL_DIR) if local_ready else model_name
 
-        # low_cpu_mem_usage=True evita picos de memoria durante la carga de pesos
-        self.model = BlipForConditionalGeneration.from_pretrained(
-            model_name,
-            low_cpu_mem_usage=True
-        ).to(self.device)
+        try:
+            self.processor = BlipProcessor.from_pretrained(
+                load_path,
+                local_files_only=local_ready,
+            )
+            # low_cpu_mem_usage=True evita picos de memoria durante la carga de pesos
+            self.model = BlipForConditionalGeneration.from_pretrained(
+                load_path,
+                low_cpu_mem_usage=True,
+                local_files_only=local_ready,
+            ).to(self.device)
+        except OSError as exc:
+            if local_ready:
+                raise RuntimeError(
+                    "Los pesos locales de BLIP están incompletos o dañados en "
+                    f"`{BLIP_LOCAL_DIR}`. Vuelva a descargarlos."
+                ) from exc
+            raise RuntimeError(
+                "No se pudo descargar BLIP desde Hugging Face. Instale los pesos "
+                "una vez desde la raíz del proyecto:\n\n"
+                "```powershell\n"
+                "python download_model_weights.py --model blip --insecure\n"
+                "```\n\n"
+                f"Después reinicie Streamlit. Los pesos se guardarán en:\n`{BLIP_LOCAL_DIR}`"
+            ) from exc
 
     def generate_caption(self, image, generation_kwargs: dict = None) -> str:
         """

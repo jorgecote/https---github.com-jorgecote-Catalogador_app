@@ -378,6 +378,23 @@ def apply_bytebox_styles():
         background: #f8fafc;
     }
 
+    .rs-time-badge {
+        background: #1b75bb;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: 600;
+    }
+
+    .rs-score-badge {
+        background: #0e446d;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
     /* Scrollbar personalizada */
     ::-webkit-scrollbar {
         width: 6px;
