@@ -1,95 +1,95 @@
 import streamlit as st
+from views.status_alert import render_status_alert
+
 
 def _toggle_select_all():
-    """Callback que se ejecuta al cambiar el checkbox 'Seleccionar todos'.
-    Lee los IDs de video directamente del session_state para evitar datos obsoletos."""
     val = st.session_state.get("select_all_vids", False)
     for vid in st.session_state.get("_current_filtered_ids", []):
         st.session_state[f"chk_vid_{vid}"] = val
 
+
 def render_selection_panel(video_ids: list, search_filter: str = "", collection_name: str = None):
     """
-    Renderiza el panel de selección de recursos al estilo ByteBox,
-    permitiendo filtrar y elegir los videos a procesar.
+    Flujo BLIP: ámbito → selección de videos → acción.
+    Devuelve selected_ids, procesar, ir_a_clip.
     """
+    scope = collection_name or "Todas las colecciones"
+    st.markdown(f'<div class="rs-scope-chip">Ámbito: {scope}</div>', unsafe_allow_html=True)
+
     if not video_ids:
-        coll_msg = f" en la colección '{collection_name}'" if collection_name else " en el servidor de ByteBox"
-        st.info(f"No se encontraron recursos de video disponibles{coll_msg}.")
+        render_status_alert(
+            "warning",
+            "No hay videos en este ámbito",
+            "Cambie de colección en el panel izquierdo o verifique la conexión con ByteBox.",
+        )
         return [], False, False
 
-    # Filtrar IDs si hay texto de búsqueda
     filtered_ids = video_ids
     if search_filter:
         filtered_ids = [vid for vid in video_ids if search_filter.lower() in str(vid).lower()]
-
-    # Guardar los IDs filtrados en session_state para que el callback los pueda leer
     st.session_state["_current_filtered_ids"] = filtered_ids
 
-    header_suffix = f" (Colección: {collection_name})" if collection_name else ""
+    if not filtered_ids:
+        render_status_alert(
+            "warning",
+            "El filtro no dejó videos visibles",
+            "Elimine o cambie el filtro por ID en el panel izquierdo.",
+        )
+        return [], False, False
+
     st.markdown(f"""
     <div class="rs-card">
-        <div class="rs-card-header">
-            <span>🎞️</span> Recursos de Video para Catalogación{header_suffix}
-        </div>
+        <div class="rs-card-header">1. Seleccione los videos a catalogar</div>
         <div class="rs-card-subtitle">
-            Seleccione los videos de ByteBox que desea analizar fotograma a fotograma con el modelo de IA.
+            Marque los recursos y pulse Catalogar. La búsqueda CLIP permanece disponible como acción secundaria.
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Barra superior de controles de selección
-    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
-    
+    ctrl_col1, ctrl_col2 = st.columns([3, 1])
     with ctrl_col1:
         st.checkbox(
-            "☑ Seleccionar todos los videos visibles", 
+            "Seleccionar todos los videos visibles",
             key="select_all_vids",
-            on_change=_toggle_select_all
+            on_change=_toggle_select_all,
         )
-        
     with ctrl_col2:
-        st.caption(f"Mostrando **{len(filtered_ids)}** de **{len(video_ids)}** videos")
-        
+        st.caption(f"{len(filtered_ids)} de {len(video_ids)} videos")
+
     selected_ids = []
-    
-    # Contenedor con scroll para selección de videos con aspecto de tarjetas DAM
-    with st.container(height=260):
-        # Disponer en 2 columnas para una vista limpia
+    with st.container(height=280):
         cols = st.columns(2)
         for idx, vid in enumerate(filtered_ids):
-            col = cols[idx % 2]
-            with col:
-                is_selected = st.checkbox(
-                    f"🎥 Recurso ID: **{vid}**", 
-                    key=f"chk_vid_{vid}"
-                )
-                if is_selected:
+            with cols[idx % 2]:
+                if st.checkbox(f"Recurso ID {vid}", key=f"chk_vid_{vid}"):
                     selected_ids.append(vid)
 
-    # Panel de Acción Inferior
-    action_col1, action_col2, action_col3 = st.columns([2, 1, 1], gap="medium")
-    
+    st.markdown("""
+    <div class="rs-card">
+        <div class="rs-card-header">2. Ejecutar acción</div>
+        <div class="rs-card-subtitle">Catalogación BLIP analiza los videos seleccionados. CLIP busca en el ámbito actual.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    action_col1, action_col2, action_col3 = st.columns([2, 1.2, 1.2], gap="medium")
     with action_col1:
-        st.markdown(f"""
-        <div style="background-color: #f1f5f9; padding: 10px 15px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.88rem;">
-            <strong>Selección actual:</strong> <span style="color: #1b75bb; font-weight: 700;">{len(selected_ids)}</span> video(s) seleccionado(s) para procesamiento.
-        </div>
-        """, unsafe_allow_html=True)
-
-    with action_col2:
-        # El botón de catalogación se deshabilita si no hay videos seleccionados
-        boton_deshabilitado = (len(selected_ids) == 0)
-        procesar = st.button(
-            "🚀 Iniciar Catalogación AI", 
-            type="primary", 
-            use_container_width=True, 
-            disabled=boton_deshabilitado
+        st.markdown(
+            f'<div class="rs-scope-chip">Selección: {len(selected_ids)} video(s)</div>',
+            unsafe_allow_html=True,
         )
-
+        if len(selected_ids) == 0:
+            st.caption("Seleccione al menos un video para habilitar Catalogar.")
+    with action_col2:
+        procesar = st.button(
+            "Catalogar con BLIP",
+            type="primary",
+            use_container_width=True,
+            disabled=(len(selected_ids) == 0),
+        )
     with action_col3:
         ir_a_clip = st.button(
-            "🔍 Búsqueda semántica (CLIP)",
-            use_container_width=True
+            "Ir a búsqueda CLIP",
+            use_container_width=True,
         )
 
     return selected_ids, procesar, ir_a_clip

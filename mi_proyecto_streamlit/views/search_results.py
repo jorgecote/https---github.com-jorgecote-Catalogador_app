@@ -1,24 +1,26 @@
 import streamlit as st
+from views.status_alert import render_status_alert
 
 
-def render_search_results(clip_hits: list, query: str = ""):
-    """
-    Lista videos que cumplen el umbral, con tabla de timestamps y score.
-    clip_hits: lista de dicts {video_id, max_score, match_count, frames}.
-    """
+def render_search_results(clip_hits: list, query: str = "", threshold: float = None):
+    """Resultados CLIP: jerarquía videos → coincidencias → timestamps."""
     if not clip_hits:
         if query:
-            st.info("No hay coincidencias por encima del umbral para esta consulta.")
+            hint = " Pruebe un umbral más bajo en el panel izquierdo." if threshold is not None else ""
+            render_status_alert(
+                "warning",
+                f"Sin coincidencias para «{query}»",
+                f"Ningún fotograma superó el umbral.{hint}",
+            )
         return
 
     q_label = f" para «{query}»" if query else ""
     st.markdown(f"""
-    <div class="rs-card" style="margin-top: 16px;">
-        <div class="rs-card-header">
-            <span>🎯</span> Videos que coinciden{q_label}
-        </div>
+    <div class="rs-card">
+        <div class="rs-card-header">Videos que coinciden{q_label}</div>
         <div class="rs-card-subtitle">
-            {len(clip_hits)} video(s) con al menos un fotograma sobre el umbral, ordenados por similitud máxima.
+            {len(clip_hits)} video(s) con al menos un fotograma sobre el umbral,
+            ordenados por similitud máxima. Las miniaturas coincidentes están resaltadas en la bandeja.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -28,12 +30,7 @@ def render_search_results(clip_hits: list, query: str = ""):
         max_score = hit.get("max_score", 0.0)
         match_count = hit.get("match_count", 0)
         frames = hit.get("frames") or []
-
-        label = (
-            f"🎥 Recurso ID {vid}  ·  "
-            f"{match_count} fotograma(s)  ·  "
-            f"score máx. {max_score:.3f}"
-        )
+        label = f"Recurso ID {vid}  ·  {match_count} coincidencia(s)  ·  score máx. {max_score:.3f}"
         with st.expander(label, expanded=(len(clip_hits) == 1)):
             rows_html = "".join([
                 (
@@ -56,8 +53,6 @@ def render_search_results(clip_hits: list, query: str = ""):
                         <th>Similitud CLIP</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
+                <tbody>{rows_html}</tbody>
             </table>
             """, unsafe_allow_html=True)

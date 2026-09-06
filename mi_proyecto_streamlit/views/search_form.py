@@ -1,25 +1,27 @@
 import streamlit as st
+from views.status_alert import render_status_alert
 
 
 def render_search_form(
     collection_name: str = None,
     total_videos: int = 0,
     collection_id: int = None,
+    threshold: float = 0.25,
+    sample_rate: int = 5,
 ):
-    """
-    Formulario de consulta en lenguaje natural.
-    Devuelve (query, buscar).
-    """
-    header_suffix = f" (Colección: {collection_name})" if collection_name else ""
-    st.markdown(f"""
+    """Formulario CLIP: ámbito, consulta y acción. Devuelve (query, buscar)."""
+    scope = collection_name or "Todas las colecciones"
+    st.markdown(
+        f'<div class="rs-scope-chip">Ámbito: {scope} · {total_videos} video(s) · umbral {threshold:.2f} · cada {sample_rate}s</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("""
     <div class="rs-card">
-        <div class="rs-card-header">
-            <span>🔍</span> Búsqueda semántica de video (CLIP){header_suffix}
-        </div>
+        <div class="rs-card-header">Consulta en lenguaje natural</div>
         <div class="rs-card-subtitle">
-            Describa en lenguaje natural lo que busca. Se analizarán fotogramas de
-            <strong>{total_videos}</strong> video(s) del ámbito actual. Los tiempos de coincidencia
-            quedan listos para una futura generación de EDL.
+            Describa lo que busca. CLIP puntuará fotogramas del ámbito actual.
+            Los tiempos quedan listos para un EDL futuro.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -29,27 +31,25 @@ def render_search_form(
         "Consulta en lenguaje natural",
         placeholder="Ejemplo: una persona caminando de noche cerca de un edificio...",
         height=90,
-        key=f"clip_query_text_{collection_key}"
+        key=f"clip_query_text_{collection_key}",
     )
 
+    if total_videos <= 0:
+        render_status_alert(
+            "warning",
+            "No hay videos en el ámbito actual",
+            "Cambie de colección o elimine el filtro por ID para habilitar la búsqueda.",
+        )
+    elif not str(query).strip():
+        st.caption("Escriba una consulta para habilitar Buscar videos.")
+
     col1, col2 = st.columns([3, 1])
-    with col1:
-        if total_videos <= 0:
-            st.warning(
-                "No hay videos en el ámbito actual. Cambie de colección o "
-                "elimine el filtro por ID."
-            )
-        else:
-            st.caption(
-                "El modelo CLIP se carga en CPU solo al pulsar Buscar "
-                "(no al abrir esta pantalla)."
-            )
     with col2:
         buscar = st.button(
-            "🔎 Buscar videos",
+            "Buscar videos",
             type="primary",
             use_container_width=True,
-            disabled=(total_videos <= 0 or not str(query).strip())
+            disabled=(total_videos <= 0 or not str(query).strip()),
         )
 
     return str(query).strip(), buscar
