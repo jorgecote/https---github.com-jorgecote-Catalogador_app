@@ -5,6 +5,7 @@ Descarga pesos de modelos IA a mi_proyecto_streamlit/model_weights/ para uso off
 Uso:
   python download_model_weights.py --model clip
   python download_model_weights.py --model blip
+  python download_model_weights.py --model qwen
   python download_model_weights.py --model all
 
 Si la red institucional bloquea SSL (CERTIFICATE_VERIFY_FAILED), use --insecure
@@ -30,11 +31,15 @@ from models.model_paths import (  # noqa: E402
     CLIP_HUB_ID,
     CLIP_LOCAL_DIR,
     MODEL_WEIGHTS_DIR,
+    QWEN_GGUF_FILENAME,
+    QWEN_GGUF_HUB_ID,
+    QWEN_GGUF_DIR,
 )
 
 MODELS = {
     "clip": (CLIP_HUB_ID, CLIP_LOCAL_DIR),
     "blip": (BLIP_HUB_ID, BLIP_LOCAL_DIR),
+    "qwen": (QWEN_GGUF_HUB_ID, QWEN_GGUF_DIR),
 }
 
 
@@ -56,7 +61,7 @@ def _apply_ssl_fix(insecure: bool) -> None:
         pass
 
 
-def _download_repo_insecure(repo_id: str, local_dir: Path) -> None:
+def _download_repo_insecure(repo_id: str, local_dir: Path, allow_files=None) -> None:
     """Descarga directa vía HTTPS sin verificar certificado (redes corporativas)."""
     import requests
     import urllib3
@@ -74,6 +79,8 @@ def _download_repo_insecure(repo_id: str, local_dir: Path) -> None:
     for item in siblings:
         filename = item.get("rfilename")
         if not filename or filename.startswith("."):
+            continue
+        if allow_files is not None and filename not in allow_files:
             continue
 
         dest = local_dir / filename
@@ -95,12 +102,12 @@ def _download_repo_insecure(repo_id: str, local_dir: Path) -> None:
     print(f"  OK: {repo_id}")
 
 
-def download_one(hub_id: str, local_dir: Path, insecure: bool) -> None:
+def download_one(hub_id: str, local_dir: Path, insecure: bool, allow_files=None) -> None:
     print(f"\nDescargando {hub_id}")
     print(f"  -> {local_dir}")
 
     if insecure:
-        _download_repo_insecure(hub_id, local_dir)
+        _download_repo_insecure(hub_id, local_dir, allow_files=allow_files)
         return
 
     from huggingface_hub import snapshot_download
@@ -108,15 +115,18 @@ def download_one(hub_id: str, local_dir: Path, insecure: bool) -> None:
     snapshot_download(
         repo_id=hub_id,
         local_dir=str(local_dir),
+        allow_patterns=allow_files,
     )
     print(f"  OK: {hub_id}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Descarga pesos locales para BLIP y CLIP.")
+    parser = argparse.ArgumentParser(
+        description="Descarga pesos locales para BLIP, CLIP y Qwen GGUF."
+    )
     parser.add_argument(
         "--model",
-        choices=["clip", "blip", "all"],
+        choices=["clip", "blip", "qwen", "all"],
         default="clip",
         help="Modelo a descargar (default: clip)",
     )
@@ -135,7 +145,8 @@ def main() -> int:
     try:
         for key in targets:
             hub_id, local_dir = MODELS[key]
-            download_one(hub_id, local_dir, args.insecure)
+            allowed = [QWEN_GGUF_FILENAME] if key == "qwen" else None
+            download_one(hub_id, local_dir, args.insecure, allow_files=allowed)
     except Exception as exc:
         print("\nERROR al descargar modelos.", file=sys.stderr)
         print(str(exc), file=sys.stderr)
@@ -149,7 +160,7 @@ def main() -> int:
         )
         return 1
 
-    print("\nListo. Reinicie Streamlit y vuelva a buscar con CLIP.")
+    print("\nListo. Reinicie Streamlit antes de usar el modelo descargado.")
     return 0
 
 

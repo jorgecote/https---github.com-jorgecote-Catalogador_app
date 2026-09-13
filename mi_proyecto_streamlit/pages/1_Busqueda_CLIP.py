@@ -120,6 +120,8 @@ def main():
     if nav.get("go_blip"):
         st.session_state["clip_phase"] = "select"
         st.switch_page("app.py")
+    if nav.get("go_automated"):
+        st.switch_page("pages/03_Catalogacion_Automatizada.py")
 
     render_workflow_stepper(phase, module="clip")
 

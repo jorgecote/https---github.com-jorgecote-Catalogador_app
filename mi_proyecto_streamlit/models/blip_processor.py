@@ -77,6 +77,33 @@ class VideoAnalyzer:
         caption = self.processor.decode(out[0], skip_special_tokens=True)
         return caption
 
+    def generate_sampling_captions(
+        self,
+        image,
+        count: int = 3,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+    ) -> list[str]:
+        """Genera varias muestras BLIP para una síntesis posterior en un LLM."""
+        count = max(1, int(count))
+        captions = []
+        for sample_index in range(count):
+            # Variación progresiva y acotada para obtener observaciones
+            # complementarias sin convertir el muestreo en ruido.
+            sample_temperature = min(0.9, max(0.6, temperature + sample_index * 0.02))
+            sample_top_p = min(0.95, max(0.85, top_p + sample_index * 0.02))
+            caption = self.generate_caption(
+                image,
+                {
+                    "do_sample": True,
+                    "num_beams": 1,
+                    "temperature": sample_temperature,
+                    "top_p": sample_top_p,
+                },
+            )
+            captions.append(caption)
+        return captions
+
     def process_video_stream(self, video_path: str, sample_rate_sec: int, generation_kwargs: dict = None):
         """
         Generador que lee el video fotograma a fotograma y emite (yield)
@@ -119,6 +146,53 @@ class VideoAnalyzer:
                 # Miniatura compacta para la bandeja de colección
                 thumb = pil_img.resize((180, 105))
                 yield timestamp, caption, thumb
+
+            success, frame = cap.read()
+            frame_count += 1
+
+        cap.release()
+
+    def process_video_sampling_stream(
+        self,
+        video_path: str,
+        sample_rate_sec: int,
+        caption_count: int = 3,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+    ):
+        """Emite timestamp, muestras BLIP y miniatura para catalogación auditable."""
+        import cv2
+        from PIL import Image
+
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            yield "00:00", [], None
+            return
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        frame_interval = max(1, int(fps * sample_rate_sec))
+        frame_count = 0
+        success, frame = cap.read()
+
+        while success:
+            if frame_count % frame_interval == 0:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(frame_rgb)
+                samples = self.generate_sampling_captions(
+                    pil_img,
+                    count=caption_count,
+                    temperature=temperature,
+                    top_p=top_p,
+                )
+                timestamp_sec = int(frame_count / fps)
+                minutes, seconds = divmod(timestamp_sec, 60)
+                hours, minutes = divmod(minutes, 60)
+                timestamp = (
+                    f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    if hours > 0
+                    else f"{minutes:02d}:{seconds:02d}"
+                )
+                yield timestamp, samples, pil_img.resize((320, 180))
 
             success, frame = cap.read()
             frame_count += 1

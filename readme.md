@@ -217,6 +217,27 @@ Estructura interna `clip_hits` (persiste en sesión):
 
 ---
 
+## Modo de uso 3 — Catalogación automatizada
+
+Este módulo crea una descripción cronológica auditable por video:
+
+1. Conéctate a ByteBox y abre **Catalogación automatizada** en la navegación superior.
+2. Selecciona una colección completa (por ID) o videos individuales.
+3. Ajusta el intervalo y el número de muestras BLIP (por defecto, 3).
+4. Pulsa **Iniciar catalogación automatizada**. Cada frame genera captions BLIP, una síntesis Qwen en español y una miniatura.
+5. Revisa la traza por fotograma y edita el texto cronológico de cada recurso.
+6. Exporta el resultado como JSON, omite la sincronización o guarda explícitamente el texto en el campo `DESCRIPCION` de ResourceSpace.
+
+### Preparar Qwen
+
+La síntesis usa `llama-cpp-python` y el archivo local Qwen GGUF Q4. Tras instalar dependencias, descárgalo una vez:
+
+```powershell
+python download_model_weights.py --model qwen --insecure
+```
+
+El modelo queda en `mi_proyecto_streamlit/model_weights/qwen2.5-1.5b-instruct-gguf/`. En equipos con poca RAM, reinicia Streamlit antes de alternar entre CLIP y la catalogación automatizada.
+
 ## Navegación entre módulos
 
 ```text
@@ -291,13 +312,12 @@ Catalogador_app/
 - Catalogación BLIP con estrategias de inferencia configurables.
 - Bandeja de fotogramas analizados con timestamps.
 - Búsqueda semántica CLIP por lenguaje natural.
+- Catalogación automatizada con múltiples captions BLIP, síntesis Qwen y revisión humana.
 - Navegación multipage BLIP ↔ CLIP con sesión compartida.
 - Limpieza automática de videos temporales tras cada procesamiento.
 
 ### Pendiente
 
-- **Descripción unificada del video** — consolidar captions BLIP en un resumen global.
-- **Escritura de metadata en ResourceSpace** — subir descripciones al MAM automáticamente.
 - **Índice persistente de embeddings CLIP** — evitar re-escaneo completo en cada búsqueda.
 - **Generación de EDL** — exportar `.edl` a partir de `clip_hits` y/o captions BLIP.
 - **Evaluación BLIP-2** — mejor calidad de captioning en CPU (requiere ≥12 GB RAM; no recomendado como reemplazo directo por velocidad).

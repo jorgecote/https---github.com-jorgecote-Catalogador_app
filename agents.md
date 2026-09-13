@@ -2,15 +2,17 @@
 
 ## Rol
 Agente experto en Python + Streamlit + MVC limpio.
-Objetivo: mantener y evolucionar el pipeline ResourceSpace → descarga temporal → BLIP (CPU) → descripciones con timestamp → limpieza inmediata; y el módulo CLIP de búsqueda semántica por fotogramas.
+Objetivo: mantener y evolucionar los módulos BLIP, CLIP y catalogación automatizada:
+ResourceSpace → descarga temporal → análisis CPU → resultados auditables → limpieza inmediata.
 
 ## Restricciones críticas (obligatorias)
 - Hardware: 4-12 GB RAM, **sin GPU**. Siempre `device="cpu"` y `low_cpu_mem_usage=True`.
-- Imports pesados (`torch`, `transformers`, `cv2`, `PIL`) → **lazy** (dentro de métodos o funciones cacheadas).
+- Imports pesados (`torch`, `transformers`, `cv2`, `PIL`, `llama_cpp`) → **lazy** (dentro de métodos o funciones cacheadas).
 - Videos: descargar a carpeta temporal → procesar → **eliminar inmediatamente** con `cleanup_video`. Nunca dejar archivos residuales.
 - Rutas: solo relativas (`Path(__file__).resolve().parent`). Proyecto vive en OneDrive.
 - Secrets: solo vía `st.secrets["resourcespace"]`. Nunca hardcodear ni loguear claves.
-- No importar BLIP en la página CLIP (y no cargar CLIP al abrir catalogación). Si ambos modelos quedan en `cache_resource` de la misma sesión, reiniciar Streamlit ante falta de RAM.
+- No importar BLIP en la página CLIP, ni CLIP al abrir catalogación automatizada. Cargar BLIP y Qwen solo al pulsar iniciar. Si se han usado varios modelos en una sesión con poca RAM, reiniciar Streamlit.
+- Qwen se carga exclusivamente desde `model_weights/qwen2.5-1.5b-instruct-gguf/qwen2.5-1.5b-instruct-q4_k_m.gguf`; no descargar pesos desde la interfaz.
 
 ## Arquitectura MVC (estricta)
 
@@ -20,11 +22,14 @@ mi_proyecto_streamlit/
 ├── runtime/
 │   └── repository.py               # Factory Streamlit → ResourceSpaceRepository (secrets)
 ├── pages/
-│   └── 1_Busqueda_CLIP.py          # CONTROLADOR búsqueda semántica CLIP
+│   ├── 1_Busqueda_CLIP.py          # CONTROLADOR búsqueda semántica CLIP
+│   └── 03_Catalogacion_Automatizada.py # CONTROLADOR BLIP sampling + Qwen
 ├── models/
 │   ├── resourcespace_client.py     # ResourceSpaceAPI + ResourceSpaceRepository
 │   ├── blip_processor.py           # VideoAnalyzer (BLIP)
-│   └── clip_processor.py           # CLIPVideoSearcher (CLIP ViT-B/32)
+│   ├── clip_processor.py           # CLIPVideoSearcher (CLIP ViT-B/32)
+│   ├── frame_synthesizer.py        # FrameSynthesizer (Qwen GGUF)
+│   └── catalogation_result.py      # Contrato y consolidación cronológica
 └── views/
     ├── styles.py                   # Tema ByteBox (incl. .rs-score-badge para CLIP)
     ├── header.py
@@ -34,7 +39,8 @@ mi_proyecto_streamlit/
     ├── collection_tray.py
     ├── search_sidebar.py           # Sidebar módulo CLIP
     ├── search_form.py              # Formulario consulta lenguaje natural
-    └── search_results.py           # Tabla de hits con timestamps y scores
+    ├── search_results.py           # Tabla de hits con timestamps y scores
+    └── automated_catalogation.py   # Configuración, auditoría y revisión HITL
 ```
 
 ### Reglas de capas
@@ -46,6 +52,7 @@ mi_proyecto_streamlit/
 ## Stack actual
 - Python + Streamlit (multipage)
 - `torch` (CPU) + `transformers` (BLIP base + CLIP ViT-B/32)
+- `llama-cpp-python` + Qwen2.5-1.5B-Instruct GGUF Q4 (síntesis CPU)
 - `opencv-python-headless` + Pillow
 - `requests` + hashlib (firmas SHA256 ResourceSpace)
 
@@ -61,8 +68,40 @@ mi_proyecto_streamlit/
 | `active_video_id` | str \| None | Solo BLIP | Video activo en bandeja |
 | `clip_hits` | list[dict] | Solo CLIP | Resultados de búsqueda semántica |
 | `clip_last_query` | str | Solo CLIP | Última consulta enviada |
+| `auto_results` | list[dict] | Catalogación automatizada | Traza auditable y texto cronológico por video |
+| `auto_phase` | str | Catalogación automatizada | Fase `select`, `processing` o `results` |
+| `auto_pending_config` | dict \| None | Catalogación automatizada | Alcance y parámetros de la ejecución en curso |
 
 Formato de cada elemento en `collections`: `{ "ref": int, "name": str, "count": int | None }`.
+
+## Módulo de catalogación automatizada — BLIP + Qwen
+
+### Propósito y flujo
+Genera una descripción cronológica y auditable de videos para revisión humana:
+
+1. El usuario escoge una colección por ID o videos individuales y define el intervalo de muestreo.
+2. `VideoAnalyzer.process_video_sampling_stream()` genera varias muestras BLIP por fotograma.
+3. `FrameSynthesizer` carga Qwen2.5-1.5B-Instruct Q4 GGUF en CPU y redacta una única idea visual cohesiva en español.
+4. El controlador conserva miniatura, muestras y síntesis; descarga y limpieza ocurren por cada video dentro de `try/finally`.
+5. La vista permite editar la descripción, exportarla como JSON, omitirla o guardarla en el campo fijo `DESCRIPCION` de ResourceSpace.
+
+### Contrato `auto_results`
+
+```python
+{
+    "video_id": int,
+    "status": "completed",
+    "frames": [{
+        "timestamp": str,
+        "image": "PIL.Image thumbnail",
+        "blip_samples": list[str],
+        "synthesis": str,
+    }],
+    "chronological_description": "[MM:SS] Descripción...",
+}
+```
+
+Qwen usa las muestras BLIP como observaciones complementarias: las coincidencias forman la estructura de la frase, y los detalles aislados se mantienen cuando son compatibles y están respaldados.
 
 ## Flujo principal (app.py — catalogación BLIP)
 1. Sidebar (`render_sidebar`) + Header.
@@ -146,10 +185,11 @@ Pensado para consumo futuro por un generador de EDL.
 | `get_collection_video_ids(id)` | `do_search` con `!collection{id}` | Videos de una colección |
 | `download_video(id)` | `get_resource_path` + HTTP | Descarga temporal |
 | `cleanup_video(path)` | — | Elimina archivo local |
+| `update_resource_description(id, value)` | `update_field` con `field=DESCRIPCION` | Escritura opcional de metadata revisada |
 
 ## Convenciones de código
 - Lazy imports obligatorios para todo lo pesado.
-- `@st.cache_resource` para BLIP (`load_analyzer` en `app.py`) y CLIP (`load_clip_searcher` en la página CLIP, solo al pulsar Buscar).
+- `@st.cache_resource` para BLIP (`load_analyzer` en `app.py`), CLIP (`load_clip_searcher` al pulsar Buscar) y BLIP+Qwen (`load_automated_models` al iniciar catalogación automatizada).
 - Generadores preferidos sobre listas grandes (ahorro de RAM).
 - Nombres claros y en español/inglés técnico mixto (consistente con el código existente).
 - Manejo de errores amigable en UI (`st.error`, `st.toast`).
@@ -168,10 +208,10 @@ private_key = "..."
 
 ```bash
 cd mi_proyecto_streamlit
-streamlit run app.py
+..\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-La página CLIP aparece en el menú multipage como **Busqueda CLIP** y también se accede desde catalogación.
+CLIP y Catalogación automatizada aparecen en el menú multipage y en la navegación superior de la aplicación.
 
 ## Estado de desarrollo
 
@@ -182,9 +222,9 @@ La página CLIP aparece en el menú multipage como **Busqueda CLIP** y también 
 - Módulo CLIP multipage: consulta en lenguaje natural, muestreo configurable, umbral, resultados con timestamps.
 - Factory compartida `runtime/repository.py`.
 - Navegación bidireccional BLIP ↔ CLIP reutilizando session state.
+- Catalogación automatizada: sampling BLIP, síntesis Qwen, revisión humana, exportación JSON y escritura opcional de metadata.
 
 ### 🔜 Pendiente
-- **Descripción unificada del video + escritura de metadata**: consolidar captions BLIP en descripción global; escribir en ResourceSpace.
 - **CLIP — índice persistente**: cachear embeddings en disco para evitar re-escaneo completo en cada búsqueda.
 - **Generación de EDL**: consumir `clip_hits` y/o descripciones BLIP para proponer pre-edición en `.edl`.
 - **Mejora del modelo de captioning**: evaluar BLIP-2 u otro modelo ligero en CPU (BLIP-2 OPT-2.7B marginal en ≥12 GB RAM; no recomendado como reemplazo directo por velocidad/memoria).

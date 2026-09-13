@@ -8,6 +8,10 @@ BLIP_HUB_ID = "Salesforce/blip-image-captioning-base"
 
 CLIP_LOCAL_DIR = MODEL_WEIGHTS_DIR / "clip-vit-base-patch32"
 BLIP_LOCAL_DIR = MODEL_WEIGHTS_DIR / "blip-image-captioning-base"
+QWEN_GGUF_DIR = MODEL_WEIGHTS_DIR / "qwen2.5-1.5b-instruct-gguf"
+QWEN_GGUF_FILE = QWEN_GGUF_DIR / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+QWEN_GGUF_HUB_ID = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+QWEN_GGUF_FILENAME = QWEN_GGUF_FILE.name
 
 
 def _has_clip_weights(local_dir: Path) -> bool:
@@ -48,6 +52,10 @@ def has_blip_weights() -> bool:
 
 def has_clip_weights() -> bool:
     return _has_clip_weights(CLIP_LOCAL_DIR)
+
+
+def has_qwen_gguf() -> bool:
+    return QWEN_GGUF_FILE.is_file() and QWEN_GGUF_FILE.stat().st_size > 0
 
 
 def clip_model_status() -> dict:

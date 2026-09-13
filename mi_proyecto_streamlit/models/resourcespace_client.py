@@ -1,5 +1,6 @@
 import hashlib
 import requests
+from urllib.parse import quote_plus
 
 # =============================================================================
 # 1. EL CONECTOR DE RED (Clase de Bajo Nivel)
@@ -25,11 +26,14 @@ class ResourceSpaceAPI:
         Recibe el nombre de la función y los parámetros que requiera.
         """
         # Construimos los parámetros base obligatorios
-        query_parts = [f"user={self.user}", f"function={function_name}"]
+        query_parts = [
+            f"user={quote_plus(str(self.user))}",
+            f"function={quote_plus(str(function_name))}",
+        ]
         
         # Añadimos dinámicamente los parámetros extra que nos pasen (param1, search, ref, etc.)
         for key, value in kwargs.items():
-            query_parts.append(f"{key}={value}")
+            query_parts.append(f"{quote_plus(str(key))}={quote_plus(str(value))}")
         
         # Unimos todo con ampersands (&) para formar la Query String
         query_string = "&".join(query_parts)
@@ -117,6 +121,21 @@ class ResourceSpaceRepository:
         if isinstance(data, list):
             return [resource['ref'] for resource in data if 'ref' in resource]
         return []
+
+    def update_resource_description(self, resource_id: int, value: str) -> bool:
+        """Actualiza el campo DESCRIPCION mediante la función update_field."""
+        if not str(value).strip():
+            raise ValueError("La descripción no puede estar vacía.")
+
+        data = self.api.call_function(
+            "update_field",
+            resource=int(resource_id),
+            field="DESCRIPCION",
+            value=str(value),
+        )
+        # ResourceSpace suele devolver true/1; algunas instalaciones devuelven
+        # un objeto de confirmación.
+        return data is True or data == 1 or isinstance(data, dict)
 
     def get_video_download_url(self, resource_id: int) -> str:
         """

@@ -122,6 +122,15 @@ def main():
                 "Conéctese primero a ByteBox",
                 "La búsqueda CLIP reutiliza la misma sesión de catalogación.",
             )
+    if nav.get("go_automated"):
+        if st.session_state["conectado"]:
+            st.switch_page("pages/03_Catalogacion_Automatizada.py")
+        else:
+            render_status_alert(
+                "warning",
+                "Conéctese primero a ByteBox",
+                "La catalogación automatizada reutiliza la sesión de catalogación.",
+            )
 
     render_workflow_stepper(phase, module="blip")
 

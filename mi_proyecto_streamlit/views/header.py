@@ -8,11 +8,15 @@ def render_header(
     is_connected: bool = False,
 ):
     """
-    Barra superior ByteBox, breadcrumbs internos y subnavegación BLIP/CLIP.
-    Devuelve eventos: go_blip, go_clip.
+    Barra superior ByteBox, breadcrumbs internos y subnavegación de módulos.
     """
     link_url = app_url or "#"
-    module_label = "Catalogación BLIP" if module == "blip" else "Búsqueda CLIP"
+    module_labels = {
+        "blip": "Catalogación BLIP",
+        "clip": "Búsqueda CLIP",
+        "automated": "Catalogación automatizada",
+    }
+    module_label = module_labels.get(module, "Catalogador AI")
     status_label = "Conectado" if is_connected else "Sin conexión"
     status_dot = "rs-dot-on" if is_connected else "rs-dot-off"
 
@@ -47,7 +51,7 @@ def render_header(
     </div>
     """, unsafe_allow_html=True)
 
-    nav1, nav2, _ = st.columns([1.2, 1.2, 3])
+    nav1, nav2, nav3, _ = st.columns([1.2, 1.2, 1.7, 2.3])
     with nav1:
         go_blip = st.button(
             "Catalogación BLIP",
@@ -64,5 +68,17 @@ def render_header(
             key="nav_to_clip",
             disabled=(module == "clip" and is_connected),
         )
+    with nav3:
+        go_automated = st.button(
+            "Catalogación automatizada",
+            use_container_width=True,
+            type="primary" if module == "automated" else "secondary",
+            key="nav_to_automated",
+            disabled=(module == "automated" and is_connected),
+        )
 
-    return {"go_blip": go_blip, "go_clip": go_clip}
+    return {
+        "go_blip": go_blip,
+        "go_clip": go_clip,
+        "go_automated": go_automated,
+    }
