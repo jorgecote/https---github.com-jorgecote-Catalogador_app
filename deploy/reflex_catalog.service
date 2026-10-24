@@ -1,0 +1,22 @@
+[Unit]
+Description=ByteBox Video Cataloger AI (Reflex Frontend & Backend)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/IA_video_app
+EnvironmentFile=-/home/ubuntu/IA_video_app/.env
+Environment="PATH=/home/ubuntu/IA_video_app/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="REFLEX_FRONTEND_PATH=/IA_videos"
+Environment="REFLEX_FRONTEND_PORT=8503"
+Environment="REFLEX_BACKEND_PORT=8504"
+ExecStart=/home/ubuntu/IA_video_app/venv/bin/reflex run --env prod --frontend-port 8503 --backend-port 8504
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

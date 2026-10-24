@@ -1,354 +1,141 @@
 # ByteBox | Catalogador de Video AI
 
-Aplicación web en **Python + Streamlit** que se conecta a una instancia de **ResourceSpace (ByteBox / MAM)** para catalogar videos con **BLIP** y realizar **búsqueda semántica por lenguaje natural** con **CLIP**, todo en **CPU** y con limpieza automática de archivos temporales.
+Dashboard en **Python + Reflex** que se conecta a **ResourceSpace (ByteBox / MAM)** para catalogar videos con IA **100 % en CPU** (sin GPU, 4–12 GB RAM).
 
-Este documento resume la arquitectura, las funcionalidades disponibles y los modos de uso paso a paso.
+La app principal vive en `ia_video_app/`. El árbol `mi_proyecto_streamlit/` se conserva como referencia del sistema Streamlit previo.
 
----
+| Módulo | Modelo | Para qué sirve | ¿Requiere ByteBox? |
+|--------|--------|----------------|--------------------|
+| **Catalogación BLIP** | Salesforce BLIP base | Descripciones por fotograma con timestamp y miniatura | Sí |
+| **Búsqueda CLIP** | CLIP ViT-B/32 | Encontrar planos con una frase en lenguaje natural | Sí |
+| **Catalogación automatizada** | BLIP + Qwen2.5-1.5B GGUF | Texto cronológico auditable y revisión humana | Sí |
+| **Chat Qwen** | El mismo GGUF Q4 | Asistente local tipo ChatGPT | No |
 
-## Funcionalidades de la aplicación
-
-La app tiene **dos módulos** accesibles desde la misma sesión de Streamlit:
-
-| Módulo | Pantalla | Modelo IA | Qué hace |
-|--------|----------|-----------|----------|
-| **Catalogación BLIP** | `app.py` | Salesforce BLIP base | Genera descripciones textuales por fotograma con marca de tiempo |
-| **Búsqueda semántica CLIP** | `pages/1_Busqueda_CLIP.py` | OpenAI CLIP ViT-B/32 | Encuentra fotogramas que coinciden con una consulta en lenguaje natural |
-
-Ambos módulos comparten:
-
-- Conexión autenticada a ByteBox (API ResourceSpace con firmas SHA256).
-- Selector de **colección activa** (todas las colecciones o una específica).
-- Filtro opcional por **ID de video**.
-- Descarga temporal de videos → procesamiento → **eliminación inmediata** del archivo local.
+Los videos se descargan a una carpeta temporal, se analizan y **se borran al terminar**. Las claves API no van en el código.
 
 ---
 
-## Requisitos del entorno
+## Requisitos
 
-- **Python 3.10+** recomendado.
-- **RAM:** 4–12 GB (sin GPU; inferencia 100 % en CPU).
-- Acceso de red a la instancia de ResourceSpace / ByteBox.
-- Credenciales API válidas en `secrets.toml`.
-
-> **Importante:** BLIP y CLIP pueden coexistir en la misma sesión de Streamlit. Si aparece falta de memoria, reinicia la app (`Ctrl+C` en terminal y vuelve a ejecutar `streamlit run app.py`).
+- Python 3.10+
+- 4–12 GB de RAM, sin GPU
+- Node.js (lo usa Reflex para el frontend)
+- Acceso de red a ResourceSpace / ByteBox (solo para BLIP, CLIP y catalogación automática)
+- Pesos locales de BLIP, CLIP y Qwen (script de descarga)
 
 ---
 
-## Instalación y puesta en marcha
-
-### 1. Clonar o abrir el proyecto
-
-El repositorio vive en OneDrive. Trabaja siempre desde la carpeta raíz `Catalogador_app`.
-
-### 2. Crear y activar el entorno virtual
+## Inicio rápido
 
 ```bash
+git clone <url-del-repositorio>
+cd Catalogador_app
+
 python -m venv .venv --copies
-.venv\Scripts\activate
-```
+# Windows:  .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
 
-En macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-### 3. Instalar dependencias
-
-Desde la raíz del proyecto:
-
-```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Las dependencias principales son: `streamlit`, `torch` (CPU), `transformers`, `opencv-python-headless`, `Pillow`, `requests`.
+Copie `.env.example` a `.env` y complete las credenciales:
 
-### 4. Configurar credenciales
-
-Crea el archivo `mi_proyecto_streamlit/.streamlit/secrets.toml` (no se sube a git):
-
-```toml
-[resourcespace]
-base_url = "https://tu-instancia/resourcespace/api/"
-user = "tu_usuario"
-private_key = "tu_clave_privada"
+```env
+RESOURCESPACE_BASE_URL=https://tu-instancia/resourcespace/api/
+RESOURCESPACE_USER=tu_usuario
+RESOURCESPACE_PRIVATE_KEY=tu_clave_privada
 ```
 
-### 5. Ejecutar la aplicación
+También se acepta el fallback `mi_proyecto_streamlit/.streamlit/secrets.toml` (sección `[resourcespace]`). **No suba `.env` ni `secrets.toml` a Git.**
+
+Descargue los pesos una vez:
 
 ```bash
-cd mi_proyecto_streamlit
-streamlit run app.py
+python download_model_weights.py --model all --insecure
 ```
 
-Se abrirá en el navegador (por defecto `http://localhost:8501`).
-
-**Acceso a los módulos:**
-
-- **Catalogación BLIP:** pantalla principal al iniciar.
-- **Búsqueda CLIP:** menú lateral multipage de Streamlit (*Busqueda CLIP*) o botón **🔍 Búsqueda semántica (CLIP)** desde catalogación (requiere estar conectado).
-
----
-
-## Modo de uso 1 — Catalogación BLIP
-
-### Objetivo
-
-Analizar videos seleccionados fotograma a fotograma y obtener **captions** (descripciones en texto) con **timestamp**, visibles en la bandeja inferior de la interfaz.
-
-### Pasos
-
-1. **Conectar a ByteBox**
-   - En la pantalla de inicio, pulsa el botón para conectar.
-   - La app autentica contra la API, obtiene la lista de videos y las colecciones disponibles.
-   - El sidebar mostrará `● Conectado (N videos disponibles)`.
-
-2. **Definir el ámbito de trabajo**
-   - En el sidebar, sección **CONEXIÓN BYTEBOX**, elige:
-     - **Todas las colecciones / General** — todos los videos del servidor, o
-     - Una **colección específica** — solo los videos de ese rodaje o proyecto.
-   - Opcional: en **FILTRAR RECURSOS**, escribe parte de un ID para acotar la lista.
-
-3. **Configurar la inferencia BLIP** (sidebar → **CONFIGURACIÓN IA (BLIP)**)
-   - **Tasa de muestreo (segundos/frame):** intervalo entre fotogramas analizados (1–30 s, default 5). Valores bajos = más detalle y más tiempo de CPU.
-   - **Estrategia de inferencia:**
-     - *Greedy Search* — rápida, recomendada en CPU.
-     - *Beam Search* — mayor calidad; ajusta número de ramas (`num_beams`).
-     - *Sampling* — más variada; ajusta temperatura y Top-P.
-
-4. **Seleccionar videos**
-   - Marca los checkboxes de los recursos a procesar.
-   - Usa **☑ Seleccionar todos los videos visibles** para la lista filtrada actual.
-   - El contador inferior indica cuántos videos están seleccionados.
-
-5. **Iniciar catalogación**
-   - Pulsa **🚀 Iniciar Catalogación AI**.
-   - Por cada video: descarga → análisis en vivo (tabla con timestamp + caption) → eliminación del archivo temporal.
-   - Al finalizar aparece una notificación y los resultados quedan en la **bandeja de colección** inferior (miniaturas + descripciones).
-
-### Qué obtienes
-
-- Tabla en vivo por video: marca de tiempo + descriptor BLIP.
-- Bandeja persistente en sesión con todos los fotogramas analizados (`analyzed_frames`).
-- Cada entrada incluye: `video_id`, `timestamp`, `caption`, miniatura.
-
-### Cuándo usar este modo
-
-- Catalogar material nuevo de un rodaje.
-- Generar descripciones legibles por humanos para revisión editorial.
-- Preparar metadata descriptiva antes de escribir en el MAM (escritura automática aún pendiente).
-
----
-
-## Modo de uso 2 — Búsqueda semántica CLIP
-
-### Objetivo
-
-Encontrar **fotogramas concretos** dentro de uno o varios videos describiendo en lenguaje natural lo que buscas (ej.: *"una persona caminando de noche cerca de un edificio"*, *"primer plano de un micrófono"*).
-
-CLIP compara el embedding del texto con cada fotograma muestreado y devuelve los que superan un **umbral de similitud**, con timestamp listo para una futura generación de EDL.
-
-### Requisito previo
-
-Debes **conectar primero en catalogación BLIP** en la misma sesión de Streamlit. CLIP reutiliza `conectado`, `video_ids`, `collections` y `selected_collection_id`.
-
-Si entras a CLIP sin conexión, verás un aviso con enlace para volver a catalogación.
-
-### Pasos
-
-1. **Ir al módulo CLIP**
-   - Desde catalogación (conectado): **🔍 Búsqueda semántica (CLIP)**, o
-   - Menú multipage: **Busqueda CLIP**.
-
-2. **Definir el ámbito** (sidebar CLIP)
-   - **Colección activa:** igual que en BLIP (todas o una colección).
-   - **Filtrar por ID de video:** opcional, limita la búsqueda a IDs que contengan el texto escrito.
-
-3. **Configurar parámetros CLIP** (sidebar → **CONFIGURACIÓN CLIP**)
-   - **Tasa de muestreo:** segundos entre fotogramas evaluados (1–30, default 5).
-   - **Umbral de similitud:** 0.15–0.40 (default 0.25). Valores típicos útiles: **0.22 – 0.32**.
-     - Umbral bajo → más coincidencias (posibles falsos positivos).
-     - Umbral alto → menos coincidencias, más precisas.
-
-4. **Escribir la consulta**
-   - En el área de texto, describe lo que buscas en lenguaje natural.
-   - Pulsa **🔎 Buscar videos**.
-   - CLIP se carga en CPU **solo en este momento** (no al abrir la pantalla).
-
-5. **Revisar resultados**
-   - Durante la búsqueda verás el progreso por video (descarga, fotogramas, similitud).
-   - Al terminar, la sección **Videos que coinciden** lista los hits ordenados por score máximo.
-   - Cada video expandible muestra tabla: tiempo, segundos, índice de frame, similitud CLIP.
-
-### Qué obtienes
-
-Estructura interna `clip_hits` (persiste en sesión):
-
-```python
-{
-    "video_id": 12345,
-    "max_score": 0.3124,
-    "match_count": 3,
-    "frames": [
-        {
-            "timestamp": "01:23",
-            "timestamp_sec": 83,
-            "frame_index": 16,
-            "score": 0.3124
-        }
-    ]
-}
-```
-
-### Cuándo usar este modo
-
-- Localizar planos concretos sin revisar el video completo a mano.
-- Explorar material de un rodaje con preguntas en lenguaje natural.
-- Obtener timestamps como base para un EDL o pre-edición (generación de `.edl` aún pendiente).
-
-### Consejos prácticos
-
-- Empieza con umbral **0.25** y muestreo **5 s**; ajusta según resultados.
-- Consultas concretas suelen funcionar mejor que frases muy genéricas.
-- Buscar en **toda la biblioteca** puede tardar mucho: acota por colección o ID cuando sea posible.
-- Si ya catalogaste con BLIP en la misma sesión y hay poca RAM, reinicia Streamlit antes de una búsqueda CLIP larga.
-
----
-
-## Modo de uso 3 — Catalogación automatizada
-
-Este módulo crea una descripción cronológica auditable por video:
-
-1. Conéctate a ByteBox y abre **Catalogación automatizada** en la navegación superior.
-2. Selecciona una colección completa (por ID) o videos individuales.
-3. Ajusta el intervalo y el número de muestras BLIP (por defecto, 3).
-4. Pulsa **Iniciar catalogación automatizada**. Cada frame genera captions BLIP, una síntesis Qwen en español y una miniatura.
-5. Revisa la traza por fotograma y edita el texto cronológico de cada recurso.
-6. Exporta el resultado como JSON, omite la sincronización o guarda explícitamente el texto en el campo `DESCRIPCION` de ResourceSpace.
-
-### Preparar Qwen
-
-La síntesis usa `llama-cpp-python` y el archivo local Qwen GGUF Q4. Tras instalar dependencias, descárgalo una vez:
+Arranque local:
 
 ```powershell
-python download_model_weights.py --model qwen --insecure
+$env:NPM_CONFIG_STRICT_SSL="false"
+$env:NODE_TLS_REJECT_UNAUTHORIZED="0"
+$env:REFLEX_API_URL="http://localhost:8504"
+.\.venv\Scripts\python.exe -u -m reflex run --frontend-port 8503 --backend-port 8504
 ```
 
-El modelo queda en `mi_proyecto_streamlit/model_weights/qwen2.5-1.5b-instruct-gguf/`. En equipos con poca RAM, reinicia Streamlit antes de alternar entre CLIP y la catalogación automatizada.
+Abra [http://localhost:8503/](http://localhost:8503/).
 
-## Navegación entre módulos
+---
+
+## Cómo usar cada módulo
+
+### 1. Catalogación BLIP
+Conecte a ByteBox, elija colección y videos, ajuste el muestreo (1–30 s) y la estrategia (Greedy / Beam / Sampling). **Iniciar catalogación** genera captions con marca de tiempo. Los resultados quedan en la bandeja inferior (miniatura + texto).
+
+### 2. Búsqueda semántica CLIP
+Con la misma sesión, abra **Búsqueda CLIP**, escriba lo que busca (*“persona caminando de noche cerca de un edificio”*), fije umbral (útil: 0.22–0.32) y pulse buscar. Los hits se ordenan por similitud y traen timestamp para un EDL futuro.
+
+### 3. Catalogación automatizada (BLIP + Qwen)
+Elija videos o un ID de colección. Cada fotograma produce varias muestras BLIP; Qwen las fusiona en una frase en español. Revise el bloque `[MM:SS]`, exporte JSON u oprima **Guardar en DESCRIPCION** para escribir el campo fijo del MAM.
+
+### 4. Chat Qwen
+Pestaña **Chat Qwen**. No hace falta conectar el DAM. El historial está en memoria de sesión (no en un `.txt`). **Nueva conversación** borra los mensajes y la caché interna del modelo.
+
+La primera vez que un modelo corre en la sesión verá una barra de instalación (pesos a RAM). Si combina varios modelos con poca memoria, reinicie la app.
+
+---
+
+## Arquitectura
+
+MVC estricto. Las vistas no llaman a la API ni cargan modelos; el controlador orquesta; los modelos son agnósticos a Reflex.
 
 ```text
-[Pantalla inicio BLIP]  ──conectar──►  [Catalogación BLIP]
-                                              │
-                    ◄── Volver a catalogación BLIP ──┤
-                                              │
-                                              ▼
-                                    [Búsqueda semántica CLIP]
+ia_video_app/
+├── ia_video_app.py          # Ruta / y rx.match de módulos
+├── controllers/             # CatalogState (eventos y jobs en background)
+├── models/                  # ResourceSpace, BLIP, CLIP, Qwen, esquemas
+├── runtime/                 # .env, repositorio, singletons CPU
+└── views/                   # UI ByteBox (cero neón)
 ```
 
-- BLIP → CLIP: botón en panel de selección (solo si `conectado`).
-- CLIP → BLIP: botón en sidebar CLIP o menú multipage.
+Documentación para agentes y reglas de capa: [`agents.md`](agents.md) · [`GAUNTLET_RULES.md`](GAUNTLET_RULES.md) · [`sdd.md`](sdd.md).
 
 ---
 
-## Arquitectura del software (MVC)
+## Despliegue
 
-```text
-Catalogador_app/
-├── .venv/                              # Entorno virtual (local, no en git)
-├── requirements.txt                    # Dependencias Python
-├── agents.md                           # Guía para agentes IA / mantenimiento
-│
-└── mi_proyecto_streamlit/
-    ├── .streamlit/secrets.toml         # Credenciales (local, no en git)
-    ├── app.py                          # Controlador catalogación BLIP
-    ├── runtime/
-    │   └── repository.py               # Factory get_repository() → API + secrets
-    ├── pages/
-    │   └── 1_Busqueda_CLIP.py          # Controlador búsqueda CLIP
-    ├── models/
-    │   ├── resourcespace_client.py     # ResourceSpaceAPI + ResourceSpaceRepository
-    │   ├── blip_processor.py           # VideoAnalyzer (BLIP)
-    │   └── clip_processor.py           # CLIPVideoSearcher (CLIP ViT-B/32)
-    └── views/
-        ├── styles.py                   # Tema visual ByteBox
-        ├── header.py
-        ├── sidebar.py                  # Sidebar BLIP
-        ├── main_page.py
-        ├── selection_panel.py          # Selección videos + acceso CLIP
-        ├── collection_tray.py          # Bandeja resultados BLIP
-        ├── search_sidebar.py           # Sidebar CLIP
-        ├── search_form.py              # Formulario consulta CLIP
-        └── search_results.py           # Resultados CLIP
-```
+Producción prevista: Oracle Cloud Ubuntu, venv aislado, Systemd + Nginx en `/IA_videos/`.
 
-### Reglas de capas
-
-- **views/** — Solo UI Streamlit; reciben datos y devuelven eventos. Sin API ni modelos IA.
-- **models/** — Lógica de negocio e IA; sin dependencia de Streamlit.
-- **app.py** y **pages/** — Orquestación, `session_state`, carga lazy de modelos.
-- **runtime/** — Helpers del controlador (secrets, factory del repositorio).
+| Pieza | Archivo |
+|-------|---------|
+| Unidad Systemd | [`deploy/reflex_catalog.service`](deploy/reflex_catalog.service) |
+| Nginx (HTTP + WebSocket `/_event`) | [`deploy/nginx_ia_videos.conf`](deploy/nginx_ia_videos.conf) |
+| Puertos | frontend `8503`, backend `8504` |
+| Variables | `REFLEX_FRONTEND_PATH=/IA_videos` (ver `.env.example`) |
 
 ---
 
-## Seguridad y credenciales
+## Hoja de ruta
 
-- Las claves API viven únicamente en `mi_proyecto_streamlit/.streamlit/secrets.toml`.
-- El código lee credenciales con `st.secrets["resourcespace"]` vía `runtime/repository.py`.
-- No hardcodear ni registrar claves en logs o consola.
-- Autenticación ResourceSpace: firmado SHA256 en cada petición (`ResourceSpaceAPI`).
+- Índice persistente de embeddings CLIP (evitar re-escaneo en cada búsqueda).
+- Exportación de EDL CMX 3600 desde `clip_hits` y descripciones cronológicas.
 
 ---
 
-## Estado del proyecto
+## Problemas frecuentes
 
-### Implementado
-
-- Conexión segura a ResourceSpace / ByteBox.
-- Listado y filtrado por **colecciones**.
-- Catalogación BLIP con estrategias de inferencia configurables.
-- Bandeja de fotogramas analizados con timestamps.
-- Búsqueda semántica CLIP por lenguaje natural.
-- Catalogación automatizada con múltiples captions BLIP, síntesis Qwen y revisión humana.
-- Navegación multipage BLIP ↔ CLIP con sesión compartida.
-- Limpieza automática de videos temporales tras cada procesamiento.
-
-### Pendiente
-
-- **Índice persistente de embeddings CLIP** — evitar re-escaneo completo en cada búsqueda.
-- **Generación de EDL** — exportar `.edl` a partir de `clip_hits` y/o captions BLIP.
-- **Evaluación BLIP-2** — mejor calidad de captioning en CPU (requiere ≥12 GB RAM; no recomendado como reemplazo directo por velocidad).
-
-Para detalle técnico orientado a desarrollo y agentes IA, ver [`agents.md`](agents.md).
+| Síntoma | Qué revisar |
+|---------|-------------|
+| No conecta a ByteBox | `.env` o `secrets.toml` con `base_url`, `user` y `private_key` |
+| CLIP o Auto piden conexión | Conectar primero desde BLIP (el chat no lo necesita) |
+| Falta Qwen | `python download_model_weights.py --model qwen --insecure` |
+| App lenta o se cierra | Poca RAM; no deje BLIP+CLIP+Qwen cargados a la vez |
+| CLIP sin resultados / demasiado ruido | Bajar o subir el umbral (0.22–0.32) |
+| Backend local no responde `/ping` | En Windows, relanzar Reflex; el socket del backend puede quedar colgado |
 
 ---
 
-## Solución de problemas frecuentes
+## Licencia y secretos
 
-| Problema | Causa probable | Qué hacer |
-|----------|----------------|-----------|
-| `No se encontraron las credenciales en secrets.toml` | Falta o ruta incorrecta del archivo | Crear `mi_proyecto_streamlit/.streamlit/secrets.toml` con las tres claves |
-| CLIP pide conectar primero | Sesión sin conexión BLIP | Volver a `app.py` y conectar a ByteBox |
-| App muy lenta o se cierra | Poca RAM con BLIP + CLIP cargados | Reiniciar Streamlit; no ejecutar ambos modelos a la vez si no es necesario |
-| Muchos falsos positivos en CLIP | Umbral bajo | Subir umbral (ej. 0.28–0.32) |
-| No encuentra nada en CLIP | Umbral alto o consulta vaga | Bajar umbral o usar descripción más específica |
-| Error al descargar un video | URL o permisos en ResourceSpace | Verificar ID, permisos de usuario API y tipo de recurso |
-
----
-
-## Referencia rápida de comandos
-
-```bash
-# Activar entorno
-.venv\Scripts\activate
-
-# Instalar / actualizar dependencias
-python -m pip install -r requirements.txt
-
-# Ejecutar app
-cd mi_proyecto_streamlit
-streamlit run app.py
-```
+Este repositorio no incluye pesos de modelos ni credenciales. Use `.env.example` y `download_model_weights.py`. No commitee `.env`, `secrets.toml`, `.web/`, `.states/` ni `model_weights/`.

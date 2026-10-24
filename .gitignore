@@ -1,8 +1,43 @@
-.streamlit/secrets.toml
+# Entorno y secretos
 .venv/
-model_weights/
+venv/
+.env
+.env.local
+.env.*.local
+**/.streamlit/secrets.toml
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+*.db
+
+# Reflex / frontend generado
+.web/
+.states/
+.reflex/
+*.pkl
+uploaded_files/
+assets/external/
+
+# Pesos de modelos (se descargan con download_model_weights.py)
+model_weights/
+**/model_weights/
+
+# Videos y temporales
 temp/
 temp_test/
 temp_videos/
+**/temp_videos/
+
+# Logs y SO
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Scratch local (no forma parte del producto)
 test_pipeline.py

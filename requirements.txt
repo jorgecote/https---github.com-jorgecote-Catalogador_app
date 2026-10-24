@@ -1,16 +1,21 @@
 --extra-index-url=https://download.pytorch.org/whl/cpu
 --extra-index-url=https://abetlen.github.io/llama-cpp-python/whl/cpu
 
-# Inferencia exclusivamente en CPU.
+# App principal Reflex (MVC) — dashboard ByteBox
+reflex>=0.10.0
+python-dotenv>=1.0.0
+
+# Módulo legado Streamlit (mi_proyecto_streamlit/)
+streamlit>=1.40.0
+
+# Inferencia CPU (imports lazy: torch, transformers, cv2, PIL, llama_cpp)
 torch
 transformers
 huggingface_hub
 certifi
-streamlit
 requests
 opencv-python-headless
 Pillow
 
-# Rueda CPU precompilada desde el índice adicional anterior; evita compilar
-# llama.cpp con Visual C++/NMake durante una instalación nueva.
+# Qwen2.5-1.5B-Instruct GGUF Q4: síntesis de catalogación + chat local
 llama-cpp-python
